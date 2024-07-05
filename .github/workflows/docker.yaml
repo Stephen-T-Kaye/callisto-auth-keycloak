@@ -50,13 +50,6 @@ jobs:
         run: (docker logs -f keycloak &) | grep -m 1 "Admin console listening on"
         timeout-minutes: 1
 
-      # - name: Configure AWS credentials
-      #   uses: aws-actions/configure-aws-credentials@v1
-      #   with:
-      #     aws-access-key-id: ${{ secrets.CALLISTO_KEYCLOAK_DEPLOY_BOT_ACCESS_KEY_ID }}
-      #     aws-secret-access-key: ${{ secrets.CALLISTO_KEYCLOAK_DEPLOY_BOT_SECRET_ACCESS_KEY }}
-      #     aws-region: eu-west-2
-
       - name: Create S3 local bucket
         run: |
           aws s3api create-bucket --bucket terraform --endpoint-url http://localhost:${{ job.services.localstack.ports[4566] }} --create-bucket-configuration LocationConstraint=eu-west-2
@@ -118,5 +111,5 @@ jobs:
           docker tag ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-amd ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-amd
           docker tag ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-arm ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-arm
           docker image push --all-tags ${{ env.REGISTRY }}/${DOCKER_REPO}
-          docker manifest create ${{ env.REGISTRY }}/${DOCKER_REPO}:{{ steps.docker_tag.outputs.DOCKER_TAG }} --amend ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-amd --amend ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-arm
-          docker manifest push ${{ env.REGISTRY }}/${DOCKER_REPO}:{{ steps.docker_tag.outputs.DOCKER_TAG }}
+          docker manifest create ${{ env.REGISTRY }}/${DOCKER_REPO}:${{ steps.docker_tag.outputs.DOCKER_TAG }} --amend ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-amd --amend ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-arm
+          docker manifest push ${{ env.REGISTRY }}/${DOCKER_REPO}:${{ steps.docker_tag.outputs.DOCKER_TAG }}
