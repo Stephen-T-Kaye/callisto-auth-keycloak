@@ -1,10 +1,10 @@
 name: Docker
+
 on:
-  # push:
-  #   branches:
-  #     - main
-  #     - "**eahw-**"
-  workflow_dispatch:
+  push:
+
+env:
+  REGISTRY: ghcr.io/stephen-t-kaye
 
 jobs:
   build-docker-image:
@@ -12,6 +12,13 @@ jobs:
       run:
         working-directory: ./config
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+
     env:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
@@ -22,7 +29,7 @@ jobs:
       TF_VAR_callisto_realm: callisto
       TF_VAR_callisto_url: https://web.callisto.localhost
       TF_VAR_include_test_users: true
-      DOCKER_REGISTRY: quay.io/ukhomeofficedigital
+      DOCKER_REGISTRY: ${{ env.REGISTRY }}
       DOCKER_REPO: callisto-auth-keycloak
 
     services:
@@ -35,7 +42,7 @@ jobs:
           SERVICES: s3
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Start Keycloak container
         run: docker run --name keycloak -p 9090:8080 -d --env KEYCLOAK_USER=admin --env KEYCLOAK_PASSWORD=admin ${DOCKER_REGISTRY}/callisto-keycloak:15.0.2
@@ -44,18 +51,18 @@ jobs:
         run: (docker logs -f keycloak &) | grep -m 1 "Admin console listening on"
         timeout-minutes: 1
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.CALLISTO_KEYCLOAK_DEPLOY_BOT_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.CALLISTO_KEYCLOAK_DEPLOY_BOT_SECRET_ACCESS_KEY }}
-          aws-region: eu-west-2
+      # - name: Configure AWS credentials
+      #   uses: aws-actions/configure-aws-credentials@v1
+      #   with:
+      #     aws-access-key-id: ${{ secrets.CALLISTO_KEYCLOAK_DEPLOY_BOT_ACCESS_KEY_ID }}
+      #     aws-secret-access-key: ${{ secrets.CALLISTO_KEYCLOAK_DEPLOY_BOT_SECRET_ACCESS_KEY }}
+      #     aws-region: eu-west-2
 
       - name: Create S3 local bucket
         run: |
           aws s3api create-bucket --bucket terraform --endpoint-url http://localhost:${{ job.services.localstack.ports[4566] }} --create-bucket-configuration LocationConstraint=eu-west-2
 
-      - uses: hashicorp/setup-terraform@v2
+      - uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
         id: init
@@ -73,12 +80,12 @@ jobs:
           KEYCLOAK_URL: http://localhost:9090
         run: terraform apply -input=false -auto-approve -input=false tfplan
 
-      - name: Log in to Quay.io
-        uses: redhat-actions/podman-login@v1
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
         with:
-          username: ${{ secrets.QUAY_ROBOT_NAME }}
-          password: ${{ secrets.QUAY_ROBOT_TOKEN }}
-          registry: ${{ env.DOCKER_REGISTRY }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Docker Stop and Commit
         run: |
@@ -87,9 +94,9 @@ jobs:
         shell: bash
 
       - name: Build ARM image
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v6
         with:
-          registry: quay.io
+          registry: ${{ env.REGISTRY }}
           platforms: linux/arm64
           context: .
           push: false
@@ -97,19 +104,20 @@ jobs:
           build-args: |
             image=${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}:${{ github.sha }}-amd
 
-      - name: Push multi-arch images and manifest to QUAY Registry
+      - name: Calculate Docker Tag
+        id: docker_tag
         run: |
-          if [ "$GITHUB_REF_NAME" = "main" ]
-          then
-            TAG=latest
-          elif [[ $GITHUB_REF_NAME =~ (eahw-[0-9]*) ]]
-          then
-            TAG=${match/#E/E}${BASH_REMATCH/#E/E}
-          else
-            TAG=${GITHUB_SHA}
+          BRANCH=$(echo $GITHUB_REF_NAME | tr '[:lower:]' '[:upper:]') && [[ $BRANCH =~ (SK-[0-9]*) ]] && dockerTag=${match/#E/-E}${BASH_REMATCH/#E/-E}
+          if [[ -n ${dockerTag} ]]; then
+            echo "DOCKER_TAG=${dockerTag}" >> $GITHUB_OUTPUT
+          elif [[ "$GITHUB_REF_NAME" == "main" ]]; then
+            echo "DOCKER_TAG=latest" >> $GITHUB_OUTPUT
           fi
+
+      - name: Push multi-arch images and manifest to Registry
+        run: |
           docker tag ${DOCKER_REGISTRY}/${DOCKER_REPO}:${GITHUB_SHA}-amd ${DOCKER_REGISTRY}/${DOCKER_REPO}:${GITHUB_SHA}-amd
           docker tag ${DOCKER_REGISTRY}/${DOCKER_REPO}:${GITHUB_SHA}-arm ${DOCKER_REGISTRY}/${DOCKER_REPO}:${GITHUB_SHA}-arm
           docker image push --all-tags ${DOCKER_REGISTRY}/${DOCKER_REPO}
-          docker manifest create ${DOCKER_REGISTRY}/${DOCKER_REPO}:${TAG} --amend ${DOCKER_REGISTRY}/${DOCKER_REPO}:${GITHUB_SHA}-amd --amend ${DOCKER_REGISTRY}/${DOCKER_REPO}:${GITHUB_SHA}-arm
-          docker manifest push ${DOCKER_REGISTRY}/${DOCKER_REPO}:${TAG}
+          docker manifest create ${DOCKER_REGISTRY}/${DOCKER_REPO}:{{ steps.docker_tag.outputs.DOCKER_TAG }} --amend ${DOCKER_REGISTRY}/${DOCKER_REPO}:${GITHUB_SHA}-amd --amend ${DOCKER_REGISTRY}/${DOCKER_REPO}:${GITHUB_SHA}-arm
+          docker manifest push ${DOCKER_REGISTRY}/${DOCKER_REPO}:{{ steps.docker_tag.outputs.DOCKER_TAG }}
