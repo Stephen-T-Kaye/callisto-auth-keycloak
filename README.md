@@ -43,13 +43,13 @@ specified in the command_
 ```
 cd config
 terraform init --reconfigure
-KEYCLOAK_USER=admin KEYCLOAK_PASSWORD=admin KEYCLOAK_CLIENT_ID=admin-cli KEYCLOAK_URL=http://localhost:50000 terraform apply -var callisto_realm=callisto -var callisto_url=https://web.callisto.localhost -var include_test_users=true
+KEYCLOAK_USER=admin KEYCLOAK_PASSWORD=admin KEYCLOAK_CLIENT_ID=admin-cli KEYCLOAK_URL=http://localhost:60000 terraform apply -var callisto_realm=callisto -var callisto_url=https://web.callisto.localhost -var include_test_users=true
 ```
 
 Now you can make changes to the config and reapply the terraform config to the keycloak instance
 
 ```
-KEYCLOAK_USER=admin KEYCLOAK_PASSWORD=admin KEYCLOAK_CLIENT_ID=admin-cli KEYCLOAK_URL=http://localhost:50000 terraform apply -var callisto_realm=callisto -var callisto_url=https://web.callisto.localhost -var include_test_users=true
+KEYCLOAK_USER=admin KEYCLOAK_PASSWORD=admin KEYCLOAK_CLIENT_ID=admin-cli KEYCLOAK_URL=http://localhost:60000 terraform apply -var callisto_realm=callisto -var callisto_url=https://web.callisto.localhost -var include_test_users=true
 ```
 
 ### Callisto UI setup when running Keycloak manually
