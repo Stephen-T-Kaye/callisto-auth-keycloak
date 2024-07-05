@@ -1,5 +1,6 @@
 terraform {
   backend "s3" {
+    skip_requesting_account_id = var.aws_provider_skip_requesting_account_id
   }
 }
 

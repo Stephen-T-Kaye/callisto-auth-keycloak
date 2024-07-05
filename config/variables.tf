@@ -15,3 +15,9 @@ variable "include_test_users" {
   description = "Whether to include test users or not"
   default     = false
 }
+
+variable "aws_provider_skip_requesting_account_id" {
+  type        = bool
+  description = "Skip requesting the AWS account ID"
+  default     = false
+}
