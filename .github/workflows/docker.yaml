@@ -30,7 +30,6 @@ jobs:
       TF_VAR_callisto_realm: callisto
       TF_VAR_callisto_url: https://web.callisto.localhost
       TF_VAR_include_test_users: true
-      TF_VAR_aws_provider_skip_requesting_account_id: true
       DOCKER_REPO: callisto-auth-keycloak
 
     services:
