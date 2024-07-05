@@ -1,0 +1,115 @@
+name: Docker
+
+on:
+  push:
+
+env:
+  REGISTRY: ghcr.io/stephen-t-kaye
+
+jobs:
+  build-docker-image:
+    defaults:
+      run:
+        working-directory: ./config
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+
+    env:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: eu-west-2
+      KEYCLOAK_CLIENT_ID: admin-cli
+      KEYCLOAK_USER: admin
+      KEYCLOAK_PASSWORD: admin
+      TF_VAR_callisto_realm: callisto
+      TF_VAR_callisto_url: https://web.callisto.localhost
+      TF_VAR_include_test_users: true
+      DOCKER_REPO: callisto-auth-keycloak
+
+    services:
+      localstack:
+        image: localstack/localstack
+        options: --name localstack
+        ports:
+          - 4566
+        env:
+          SERVICES: s3
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Start Keycloak container
+        run: docker run --name keycloak -p 9090:8080 -d --env KEYCLOAK_USER=admin --env KEYCLOAK_PASSWORD=admin ${{ env.REGISTRY }}/callisto-keycloak:15.0.2
+
+      - name: Wait for Keycloak
+        run: (docker logs -f keycloak &) | grep -m 1 "Admin console listening on"
+        timeout-minutes: 1
+
+      - name: Create S3 local bucket
+        run: |
+          aws s3api create-bucket --bucket terraform --endpoint-url http://localhost:${{ job.services.localstack.ports[4566] }} --create-bucket-configuration LocationConstraint=eu-west-2
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        id: init
+        run: terraform init -reconfigure -backend-config="skip_requesting_account_id=true" -backend-config="endpoint=http://localhost:${{ job.services.localstack.ports[4566] }}" -backend-config="region=eu-west-2" -backend-config="skip_credentials_validation=true" -backend-config="skip_metadata_api_check=true" -backend-config="bucket=terraform" -backend-config="key=terraform.tfstate" -backend-config="force_path_style=true"
+
+      - name: Terraform Plan
+        id: plan
+        env:
+          KEYCLOAK_URL: http://localhost:9090
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Terraform Apply
+        id: apply
+        env:
+          KEYCLOAK_URL: http://localhost:9090
+        run: terraform apply -input=false -auto-approve -input=false tfplan
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker Stop and Commit
+        run: |
+          docker stop keycloak
+          docker commit keycloak ${{ env.REGISTRY }}/${{ env.DOCKER_REPO }}:${{ github.sha }}-amd
+        shell: bash
+
+      - name: Build ARM image
+        uses: docker/build-push-action@v6
+        with:
+          registry: ${{ env.REGISTRY }}
+          platforms: linux/arm64
+          context: .
+          push: false
+          tags: ${{ env.REGISTRY }}/${{ env.DOCKER_REPO }}:${{ github.sha }}-arm
+          build-args: |
+            image=${{ env.REGISTRY }}/${{ env.DOCKER_REPO }}:${{ github.sha }}-amd
+
+      - name: Calculate Docker Tag
+        id: docker_tag
+        run: |
+          BRANCH=$(echo $GITHUB_REF_NAME | tr '[:lower:]' '[:upper:]') && [[ $BRANCH =~ (SK-[0-9]*) ]] && dockerTag=${match/#E/-E}${BASH_REMATCH/#E/-E}
+          if [[ -n ${dockerTag} ]]; then
+            echo "DOCKER_TAG=${dockerTag}" >> $GITHUB_OUTPUT
+          elif [[ "$GITHUB_REF_NAME" == "main" ]]; then
+            echo "DOCKER_TAG=latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push multi-arch images and manifest to Registry
+        run: |
+          docker tag ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-amd ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-amd
+          docker tag ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-arm ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-arm
+          docker image push --all-tags ${{ env.REGISTRY }}/${DOCKER_REPO}
+          docker manifest create ${{ env.REGISTRY }}/${DOCKER_REPO}:${{ steps.docker_tag.outputs.DOCKER_TAG }} --amend ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-amd --amend ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-arm
+          docker manifest push ${{ env.REGISTRY }}/${DOCKER_REPO}:${{ steps.docker_tag.outputs.DOCKER_TAG }}
