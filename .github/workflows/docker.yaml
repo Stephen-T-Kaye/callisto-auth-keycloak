@@ -29,7 +29,6 @@ jobs:
       TF_VAR_callisto_realm: callisto
       TF_VAR_callisto_url: https://web.callisto.localhost
       TF_VAR_include_test_users: true
-      DOCKER_REGISTRY: ${{ env.REGISTRY }}
       DOCKER_REPO: callisto-auth-keycloak
 
     services:
@@ -45,7 +44,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Start Keycloak container
-        run: docker run --name keycloak -p 9090:8080 -d --env KEYCLOAK_USER=admin --env KEYCLOAK_PASSWORD=admin ${DOCKER_REGISTRY}/callisto-keycloak:15.0.2
+        run: docker run --name keycloak -p 9090:8080 -d --env KEYCLOAK_USER=admin --env KEYCLOAK_PASSWORD=admin ${{ env.REGISTRY }}/callisto-keycloak:15.0.2
 
       - name: Wait for Keycloak
         run: (docker logs -f keycloak &) | grep -m 1 "Admin console listening on"
@@ -90,7 +89,7 @@ jobs:
       - name: Docker Stop and Commit
         run: |
           docker stop keycloak
-          docker commit keycloak ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}:${{ github.sha }}-amd
+          docker commit keycloak ${{ env.REGISTRY }}/${{ env.DOCKER_REPO }}:${{ github.sha }}-amd
         shell: bash
 
       - name: Build ARM image
@@ -100,9 +99,9 @@ jobs:
           platforms: linux/arm64
           context: .
           push: false
-          tags: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}:${{ github.sha }}-arm
+          tags: ${{ env.REGISTRY }}/${{ env.DOCKER_REPO }}:${{ github.sha }}-arm
           build-args: |
-            image=${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}:${{ github.sha }}-amd
+            image=${{ env.REGISTRY }}/${{ env.DOCKER_REPO }}:${{ github.sha }}-amd
 
       - name: Calculate Docker Tag
         id: docker_tag
@@ -116,8 +115,8 @@ jobs:
 
       - name: Push multi-arch images and manifest to Registry
         run: |
-          docker tag ${DOCKER_REGISTRY}/${DOCKER_REPO}:${GITHUB_SHA}-amd ${DOCKER_REGISTRY}/${DOCKER_REPO}:${GITHUB_SHA}-amd
-          docker tag ${DOCKER_REGISTRY}/${DOCKER_REPO}:${GITHUB_SHA}-arm ${DOCKER_REGISTRY}/${DOCKER_REPO}:${GITHUB_SHA}-arm
-          docker image push --all-tags ${DOCKER_REGISTRY}/${DOCKER_REPO}
-          docker manifest create ${DOCKER_REGISTRY}/${DOCKER_REPO}:{{ steps.docker_tag.outputs.DOCKER_TAG }} --amend ${DOCKER_REGISTRY}/${DOCKER_REPO}:${GITHUB_SHA}-amd --amend ${DOCKER_REGISTRY}/${DOCKER_REPO}:${GITHUB_SHA}-arm
-          docker manifest push ${DOCKER_REGISTRY}/${DOCKER_REPO}:{{ steps.docker_tag.outputs.DOCKER_TAG }}
+          docker tag ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-amd ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-amd
+          docker tag ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-arm ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-arm
+          docker image push --all-tags ${{ env.REGISTRY }}/${DOCKER_REPO}
+          docker manifest create ${{ env.REGISTRY }}/${DOCKER_REPO}:{{ steps.docker_tag.outputs.DOCKER_TAG }} --amend ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-amd --amend ${{ env.REGISTRY }}/${DOCKER_REPO}:${GITHUB_SHA}-arm
+          docker manifest push ${{ env.REGISTRY }}/${DOCKER_REPO}:{{ steps.docker_tag.outputs.DOCKER_TAG }}
