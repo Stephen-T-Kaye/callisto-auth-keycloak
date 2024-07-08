@@ -24,10 +24,21 @@ resource "keycloak_openid_client" "react_client" {
 }
 
 resource "keycloak_openid_user_property_protocol_mapper" "user_property_mapper" {
+  count     = var.include_test_users ? 0 : 1
   realm_id  = keycloak_realm.callisto.id
   client_id = keycloak_openid_client.react_client.id
-  name      = "personId"
+  name      = "personIdProperty"
 
   user_property = "id"
+  claim_name    = "personId"
+}
+
+resource "keycloak_openid_user_attribute_protocol_mapper" "user_property_mapper" {
+  count     = var.include_test_users ? 1 : 0
+  realm_id  = keycloak_realm.callisto.id
+  client_id = keycloak_openid_client.react_client.id
+  name      = "personIdAttribute"
+
+  user_attribute = "unique_identifier"
   claim_name    = "personId"
 }
