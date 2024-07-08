@@ -11,6 +11,10 @@ resource "keycloak_user" "tester" {
     value     = "password"
     temporary = false
   }
+
+  attributes = {
+    unique_identifier = "00000000-0000-0000-0000-000000000000"
+  }
 }
 
 resource "keycloak_user" "callistouser" {
@@ -26,4 +30,9 @@ resource "keycloak_user" "callistouser" {
     value     = "password123"
     temporary = false
   }
+
+    attributes = {
+    unique_identifier = "00000000-0000-0000-0000-000000000001"
+  }
+
 }
